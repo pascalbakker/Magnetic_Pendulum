@@ -3,4 +3,4 @@ project(ParallelMagnet C)
 
 set(CMAKE_C_STANDARD 99)
 
-add_executable(ParallelMagnet main.c vector.c)
+add_executable(ParallelMagnet main.c)

@@ -5,7 +5,8 @@
 #include <stdlib.h>
 #include <math.h>
 #include <assert.h>
-
+#include <stdlib.h>
+#include <memory.h>
 // To-do
 // CLEAN UP CODE
 // PARALLELIZE
@@ -41,13 +42,12 @@ const double m_fHeight = 1.0; //pendulum height above magnets
 // value 1: magnet's x coordinate
 // value 2: magnet's y coordinate
     const double originDist = 5.0; //distance the magnets are from x: 0 y:0
-    const int numOfMagnets = 4;
+    const int numOfMagnets = 3;
     double magnets[numOfMagnets+1][2] = {
             {0,0}, // <---- Mountpoint location
-            {originDist,originDist},
-            {-originDist,originDist},
-            {originDist,-originDist},
-            {-originDist,-originDist},
+            {0,-originDist-15},
+            {-originDist-0.5,0},
+            {originDist+0.5,0},
     };
 
 
@@ -190,7 +190,7 @@ int isNearMagnet(double x, double y){
 // Prints out color distribution
 // Paramters
 // NA
-void printImage(){
+void printImage(char* imageName){
     //Image matrix
     struct rgb *mat = (struct rgb*)malloc(imageHeight * imageWidth* sizeof(struct rgb));
     int result;
@@ -199,6 +199,11 @@ void printImage(){
     int bucket[numOfMagnets] = {[1 ... numOfMagnets-1] = 0.0};
 
     //CREATE IMAGE MATRIX
+
+            //MPI
+
+
+
     //Referenced Schuster's Mandlebrot slides
     for(unsigned r=0;r<imageHeight;r++){
         double cx = minX+(r*1.0/imageHeight)*(maxX-minX); //constant real
@@ -246,7 +251,14 @@ void printImage(){
         }
     }
     //CREATE IMAGE WITH RGB MATRIX
-    FILE * fp = fopen ("/Users/pascal/CLionProjects/ParallelMagnet/test.pgm","wb");
+    char* location = "/Users/pascal/CLionProjects/ParallelMagnet/gif1/";
+    char* exten = ".png";
+    char* name = malloc(1+strlen(location)+strlen(imageName)+strlen(exten));
+    strcpy(name,location);
+    strcat(name,imageName);
+    strcat(name,exten);
+
+    FILE * fp = fopen (name,"wb");
     fprintf(fp,"P3\n");
     fprintf(fp,"%d %d\n",imageWidth,imageHeight);
     fprintf(fp,"%d\n",255);
@@ -259,18 +271,28 @@ void printImage(){
             if((i+j)%13==0) fprintf(fp,"\n");
         }
     }
-    free(mat);
-
+    fclose(fp);
     //Print bucket distribution
     for(int i=0;i<numOfMagnets;i++){
         printf("Magnet %d: %d\n",i,bucket[i]);
     }
-    free(bucket);
+
 }
 
 
 //Execution method
 int main() {
-    printImage();
+    printf("Begin\n");
+    int numPics = 100;
+    double yval = (2*(originDist+15))/numPics;
+    for(int i=0;i<numPics+1;i++){
+        printf("Running image %d.png\n",i);
+        char array[12];
+        sprintf( array,"%d", i);
+        printf("Image: %s.pgm",array);
+        magnets[1][1] = magnets[1][1]+yval;
+        printImage(array);
+    }
+    printf("Done");
     return 0;
 }
