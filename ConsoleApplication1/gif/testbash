@@ -1,0 +1,5 @@
+#!/bin/bash
+for file in *.pgm
+do
+  mv "$file" "${file%.pgm}.png"
+done
