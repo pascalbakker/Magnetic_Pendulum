@@ -10,22 +10,20 @@
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
 
-//Holds RGB values
+//Contains 3 integer values to represent R, G, and B.
 struct rgb {
 	int r, g, b;
 };
 #define ORIGINDIST 5.0 //distance the magnets are from x: 0 y:0
-#define NUM_MAGNETS 3
-#define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
-//Code constants
+#define NUM_MAGNETS 3 //Magnets to be simulated
+#define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); } //Allows for error checking to be called
 const int iterations = 5000; //number of iterations for integration
-const int minSteps = 300; //Minimum number of steps before pendulum() breaks
-
-						  //Image Parameters
+const int minSteps = 300; //Minimum number of steps before pendulum() breaks image Parameters
 const unsigned imageWidth = 300;
 const unsigned imageHeight = 300;
 
-inline void gpuAssert(cudaError_t code, char *file, int line, bool abort = true)
+//CUDA error checking 
+inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort = true)
 {
 	if (code != cudaSuccess)
 	{
@@ -46,9 +44,7 @@ __device__ int pendulum(double x, double y, double *dev_magnets) {
 								  // value 1: magnet's x coordinate
 								  // value 2: magnet's y coordinate
 								  //Coordinate System parameters
-
-								  //Starting Vectors
-	double pos[2] = { x,y };
+	double pos[2] = { x,y }; //starting vectors
 	double vel[2] = { 0,0 }; //starting velocity
 	double r[2] = { 0,0 }; //starting position
 	double acc0[2] = { 0,0 }; //pendulum acceleration
@@ -57,12 +53,8 @@ __device__ int pendulum(double x, double y, double *dev_magnets) {
 	double force[2] = { 0,0 }; //x & y forces on pendulum
 	double *src;
 
-	//tmp = malloc(2 * sizeof(double));
-
 	acc_n = acc2;
-
 	acc_p = acc0;
-
 	acc = acc1;
 
 	//Time variables
@@ -152,7 +144,7 @@ __device__ int isNearMagnet(double x, double y, double *dev_magnets) {
 
 // Creates image with pixel values calculated from pendulum function and prints out color distribution
 void printImage(char* imageName, struct rgb *mat) {
-	char *location, *exten;
+	const char *location, *exten;
 	//CREATE IMAGE WITH RGB MATRIX
 	location = "C:/Users/rcall/source/repos/CUDA_Final/ConsoleApplication1/gif1/";
 	exten = ".png";
@@ -190,6 +182,7 @@ void printImage(char* imageName, struct rgb *mat) {
 	fclose(fp);
 }
 
+//Calculates the color matrix that printImage uses to formulate its result
 __global__ void Calculate(struct rgb *dev_mat, double *dev_magnets) {
 	const double minX = -15.0;
 	const double maxX = 15.0;
@@ -204,7 +197,6 @@ __global__ void Calculate(struct rgb *dev_mat, double *dev_magnets) {
 	int result;
 	double cx, cy;
 
-	//Referenced Schuster's Mandlebrot slides
 	if ((r < imageHeight) && (i < imageWidth)) {
 		cx = minX + (r*1.0 / imageHeight)*(maxX - minX); //constant real
 		cy = minY + (i * 1.0 / imageWidth) * (maxY - minY);
@@ -244,15 +236,8 @@ __global__ void Calculate(struct rgb *dev_mat, double *dev_magnets) {
 				break;
 			}
 		}
-		//add color to matrix
 		dev_mat[(i + r * imageWidth)] = color;
 	}
-	//for (int i = 0; i < 3; i++) {
-	//	for (int j = 0; j < 3; j++) {
-	//		printf("%d ", dev_magnets[i][j]);
-	//	}
-	//	printf("\n");
-	//}
 }
 
 
@@ -261,17 +246,18 @@ int main() {
 	printf("Begin\n");
 	int numPics = 100;
 	double yval = (2 * (ORIGINDIST + 15)) / numPics;
-	size_t bytes = imageHeight * imageWidth * sizeof(struct rgb)*sizeof(size_t);
+	size_t bytes = imageHeight * imageWidth * sizeof(struct rgb) * sizeof(size_t);
 	size_t mat_size = sizeof(double) * size_t(NUM_MAGNETS + 1 * 2);
 
+	//Defines variables to be copied 
 	struct rgb *dev_mat;
 	double  *dev_magnets;
 	struct rgb *h_mat = (struct rgb*)malloc(bytes);
 	double h_magnets[NUM_MAGNETS + 1][2] = { { 0,0 },{ 0,-ORIGINDIST - 15 },{ -ORIGINDIST - 0.5,0 },{ ORIGINDIST + 0.5,0 } };
-
 	struct rgb *mat = (struct rgb*)malloc(bytes);
 	double magnets[NUM_MAGNETS + 1][2] = { { 0,0 },{ 0,-ORIGINDIST - 15 },{ -ORIGINDIST - 0.5,0 },{ ORIGINDIST + 0.5,0 } };
 
+	//Allocates and copies host variables to the device
 	gpuErrchk(cudaMalloc((void**)&dev_mat, bytes));
 	gpuErrchk(cudaMalloc((void**)&dev_magnets, bytes));
 	gpuErrchk(cudaMemcpy(dev_mat, mat, bytes, cudaMemcpyHostToDevice));
@@ -285,10 +271,11 @@ int main() {
 		magnets[1][1] = magnets[1][1] + yval;
 		Calculate << <40, 20 >> > (dev_mat, dev_magnets);
 		cudaDeviceSynchronize();
-		gpuErrchk(cudaMemcpy(h_mat,dev_mat, bytes, cudaMemcpyDeviceToHost));
+
+		//Copies the device variables gathered in Calculate and brings them back to host memory for processing
+		gpuErrchk(cudaMemcpy(h_mat, dev_mat, bytes, cudaMemcpyDeviceToHost));
 		gpuErrchk(cudaMemcpy(h_magnets, dev_magnets, mat_size, cudaMemcpyDeviceToHost));
-		printf("Test Magnet %i: %f\n", i, h_magnets);
-		printImage(array, mat);
+		printImage(array, h_mat);
 	}
 	printf("Done");
 	return 0;
