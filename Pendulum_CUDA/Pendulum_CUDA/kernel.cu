@@ -16,18 +16,25 @@ struct rgb {
 };
 #define ORIGINDIST 5.0 //distance the magnets are from x: 0 y:0
 #define NUM_MAGNETS 3
+#define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 //Code constants
 const int iterations = 5000; //number of iterations for integration
 const int minSteps = 300; //Minimum number of steps before pendulum() breaks
 
-//Image Parameters
+						  //Image Parameters
 const unsigned imageWidth = 300;
 const unsigned imageHeight = 300;
 
-
+inline void gpuAssert(cudaError_t code, char *file, int line, bool abort = true)
+{
+	if (code != cudaSuccess)
+	{
+		fprintf(stderr, "GPUassert: %s %s %d\n", cudaGetErrorString(code), file, line);
+	}
+}
 
 // Determines which magnet the pendulumn is going to land
-__device__ int pendulum(double x, double y, double dev_magnets[NUM_MAGNETS + 1][2]) {
+__device__ int pendulum(double x, double y, double *dev_magnets) {
 	const float MAXFLOAT = 99999999.9;
 	int closest_magnet = -1, ct;
 	double *tmp, *acc_p, *acc, *acc_n, t, dt, closest_dist, dist;
@@ -40,7 +47,7 @@ __device__ int pendulum(double x, double y, double dev_magnets[NUM_MAGNETS + 1][
 								  // value 2: magnet's y coordinate
 								  //Coordinate System parameters
 
-	//Starting Vectors
+								  //Starting Vectors
 	double pos[2] = { x,y };
 	double vel[2] = { 0,0 }; //starting velocity
 	double r[2] = { 0,0 }; //starting position
@@ -48,8 +55,8 @@ __device__ int pendulum(double x, double y, double dev_magnets[NUM_MAGNETS + 1][
 	double acc1[2] = { 0,0 }; //pendulumn accelertion next step
 	double acc2[2] = { 0,0 }; //accel prev step
 	double force[2] = { 0,0 }; //x & y forces on pendulum
+	double *src;
 
-							   
 	//tmp = malloc(2 * sizeof(double));
 
 	acc_n = acc2;
@@ -77,7 +84,7 @@ __device__ int pendulum(double x, double y, double dev_magnets[NUM_MAGNETS + 1][
 		closest_dist = MAXFLOAT;
 		//Calculate the magnet and pendulum forces on the pendulumn acceleration
 		for (int i = 0; i < NUM_MAGNETS + 1; i++) {
-			double *src = dev_magnets[i];
+			src = dev_magnets;
 
 			r[0] = pos[0] - src[0];
 			r[1] = pos[1] - src[1];
@@ -128,11 +135,11 @@ __device__ int pendulum(double x, double y, double dev_magnets[NUM_MAGNETS + 1][
 }
 
 // Creates a square box around the magnet
-__device__ int isNearMagnet(double x, double y,double dev_magnets[NUM_MAGNETS + 1][2]) {
+__device__ int isNearMagnet(double x, double y, double *dev_magnets) {
 	double r[2], *magnet;
 	int i;
 	for (i = 1; i < NUM_MAGNETS + 1; i++) {
-		magnet = dev_magnets[i];
+		magnet = dev_magnets;
 		r[0] = magnet[0] - x;
 		r[1] = magnet[1] - y;
 		if (fabs(r[0]) < 0.4&&fabs(r[1]) < 0.4) {
@@ -144,7 +151,7 @@ __device__ int isNearMagnet(double x, double y,double dev_magnets[NUM_MAGNETS + 
 
 
 // Creates image with pixel values calculated from pendulum function and prints out color distribution
-void printImage(char* imageName, struct rgb *mat, int *bucket[NUM_MAGNETS]) {
+void printImage(char* imageName, struct rgb *mat) {
 	char *location, *exten;
 	//CREATE IMAGE WITH RGB MATRIX
 	location = "C:/Users/rcall/source/repos/CUDA_Final/ConsoleApplication1/gif1/";
@@ -154,8 +161,8 @@ void printImage(char* imageName, struct rgb *mat, int *bucket[NUM_MAGNETS]) {
 
 	if (name != 0) {
 		strcpy(name, location);
-		strncat(name, imageName,1);
-		strncat(name, exten,4);
+		strncat(name, imageName, 1);
+		strncat(name, exten, 4);
 	}
 	else {
 		printf("Variable name is Null exiting.");
@@ -181,103 +188,94 @@ void printImage(char* imageName, struct rgb *mat, int *bucket[NUM_MAGNETS]) {
 		}
 	}
 	fclose(fp);
-	//Print bucket distribution
-	for (int i = 0; i < NUM_MAGNETS; i++) {
-		printf("Magnet %d: %f\n", i, bucket[i]);
-	}
-
 }
 
-__global__ void Calculate(struct rgb *dev_mat, int *dev_bucket,double dev_magnets[NUM_MAGNETS + 1][2]) {
+__global__ void Calculate(struct rgb *dev_mat, double *dev_magnets) {
 	const double minX = -15.0;
 	const double maxX = 15.0;
 	const double minY = -15.0;
 	const double maxY = 15.0;
 
-	//dev_mat = (struct rgb*)malloc(imageHeight * imageWidth * sizeof(struct rgb));
-	//dev_bucket[NUM_MAGNETS] = { dev_bucket[NUM_MAGNETS] = 0 };
+	//CUDA Constraints
+	unsigned r = threadIdx.x + (blockDim.x*blockIdx.x);
+	unsigned i = threadIdx.y + (blockDim.y*blockIdx.y);
 
 	//Image matrix
 	int result;
 	double cx, cy;
-	unsigned r, i;
-	//Bucket
 
 	//Referenced Schuster's Mandlebrot slides
-	for (r = 0; r < imageHeight; r++) {
+	if ((r < imageHeight) && (i < imageWidth)) {
 		cx = minX + (r*1.0 / imageHeight)*(maxX - minX); //constant real
-		for (i = 0; i < imageWidth; i++) {
-			cy = minY + (i * 1.0 / imageWidth) * (maxY - minY);
-			//Calculate coordinate result
-			result = pendulum(cx, cy,dev_magnets);
-			//determine color
-			struct rgb color;
-			color.r = 0;
-			color.g = 0;
-			color.b = 0;
+		cy = minY + (i * 1.0 / imageWidth) * (maxY - minY);
+		//Calculate coordinate result
+		result = pendulum(cx, cy, dev_magnets);
+		//determine color
+		struct rgb color;
+		color.r = 0;
+		color.g = 0;
+		color.b = 0;
 
-			if (isNearMagnet(cx, cy,dev_magnets)) {//If coordinate is magnet
-				color.r = 255;
-				color.b = 255;
-			}
-			else {
-				switch (result) {
-				case 1: color.r = 255;
-					break;
-				case 2: color.g = 255;
-					break;
-				case 3: color.b = 255;
-					break;
-				case 4:
-					color.r = 255;
-					color.g = 255;
-					break;
-				case 5:
-					color.g = 255;
-					color.b = 255;
-					break;
-				case 6: color.r = 127;
-					break;
-				case 7: color.g = 127;
-					break;
-				case 8: color.b = 127;
-					break;
-				}
-			}
-			//add color to bucket
-			dev_bucket[result - 1]++;
-			//add color to matrix
-			dev_mat[(i + r * imageWidth)] = color;
+		if (isNearMagnet(cx, cy, dev_magnets)) {//If coordinate is magnet
+			color.r = 255;
+			color.b = 255;
 		}
+		else {
+			switch (result) {
+			case 1: color.r = 255;
+				break;
+			case 2: color.g = 255;
+				break;
+			case 3: color.b = 255;
+				break;
+			case 4:
+				color.r = 255;
+				color.g = 255;
+				break;
+			case 5:
+				color.g = 255;
+				color.b = 255;
+				break;
+			case 6: color.r = 127;
+				break;
+			case 7: color.g = 127;
+				break;
+			case 8: color.b = 127;
+				break;
+			}
+		}
+		//add color to matrix
+		dev_mat[(i + r * imageWidth)] = color;
 	}
-
+	//for (int i = 0; i < 3; i++) {
+	//	for (int j = 0; j < 3; j++) {
+	//		printf("%d ", dev_magnets[i][j]);
+	//	}
+	//	printf("\n");
+	//}
 }
+
 
 //Execution method
 int main() {
 	printf("Begin\n");
 	int numPics = 100;
-	int yval = (2 * (ORIGINDIST + 15)) / numPics;
-	double bytes = imageHeight * imageWidth * sizeof(struct rgb);
+	double yval = (2 * (ORIGINDIST + 15)) / numPics;
+	size_t bytes = imageHeight * imageWidth * sizeof(struct rgb)*sizeof(size_t);
+	size_t mat_size = sizeof(double) * size_t(NUM_MAGNETS + 1 * 2);
 
 	struct rgb *dev_mat;
-	int  *dev_bucket;
 	double  *dev_magnets;
+	struct rgb *h_mat = (struct rgb*)malloc(bytes);
+	double h_magnets[NUM_MAGNETS + 1][2] = { { 0,0 },{ 0,-ORIGINDIST - 15 },{ -ORIGINDIST - 0.5,0 },{ ORIGINDIST + 0.5,0 } };
 
 	struct rgb *mat = (struct rgb*)malloc(bytes);
-	int *bucket[NUM_MAGNETS] = { bucket[NUM_MAGNETS - 1] = 0 };
-	double magnets[NUM_MAGNETS + 1][2] = {{0,0},{0,-ORIGINDIST - 15},{-ORIGINDIST - 0.5,0},{ORIGINDIST + 0.5,0}};
+	double magnets[NUM_MAGNETS + 1][2] = { { 0,0 },{ 0,-ORIGINDIST - 15 },{ -ORIGINDIST - 0.5,0 },{ ORIGINDIST + 0.5,0 } };
 
-	cudaMalloc((void**)&dev_mat, bytes);
-	cudaMalloc((void**)&dev_bucket, bytes);
-	cudaMalloc((void**)&dev_magnets, bytes);
-
-	cudaMemcpy(dev_mat, &mat, bytes, cudaMemcpyHostToDevice);
-	printf("Device Mat Variable Copying:\t%s\n", cudaGetErrorString(cudaGetLastError()));
-	cudaMemcpy(dev_bucket, &bucket, bytes, cudaMemcpyHostToDevice);
-	printf("Device Bucket Variable Copying:\t%s\n", cudaGetErrorString(cudaGetLastError()));
-	cudaMemcpy(dev_magnets, &magnets, bytes, cudaMemcpyHostToDevice);
-	printf("Device Magnet Variable Copying:\t%s\n", cudaGetErrorString(cudaGetLastError()));
+	gpuErrchk(cudaMalloc((void**)&dev_mat, bytes));
+	gpuErrchk(cudaMalloc((void**)&dev_magnets, bytes));
+	gpuErrchk(cudaMemcpy(dev_mat, mat, bytes, cudaMemcpyHostToDevice));
+	gpuErrchk(cudaMemcpy(dev_magnets, magnets, mat_size, cudaMemcpyHostToDevice));
 
 	for (int i = 0; i < numPics + 1; i++) {
 		printf("Running image %d.png\n", i);
@@ -285,19 +283,12 @@ int main() {
 		sprintf(array, "%d", i);
 		printf("Image: %s.pgm\n", array);
 		magnets[1][1] = magnets[1][1] + yval;
-		//Calculate<<<1,1>>>(dev_mat,dev_bucket,dev_magnets);
+		Calculate << <40, 20 >> > (dev_mat, dev_magnets);
 		cudaDeviceSynchronize();
-		cudaError_t error = cudaGetLastError();
-		if (error != cudaSuccess)
-		{
-			fprintf(stderr, "ERROR: %s\n", cudaGetErrorString(error));
-			exit(-1);
-		}
-		cudaMemcpy(dev_magnets, magnets, bytes, cudaMemcpyDeviceToHost);
-		cudaMemcpy(dev_bucket, bucket, bytes, cudaMemcpyDeviceToHost);
-		cudaMemcpy(mat, dev_mat, bytes, cudaMemcpyDeviceToHost);
-		printf("Test Magnet %d: %f\n", i, magnets);
-		printImage(array,mat,bucket);
+		gpuErrchk(cudaMemcpy(h_mat,dev_mat, bytes, cudaMemcpyDeviceToHost));
+		gpuErrchk(cudaMemcpy(h_magnets, dev_magnets, mat_size, cudaMemcpyDeviceToHost));
+		printf("Test Magnet %i: %f\n", i, h_magnets);
+		printImage(array, mat);
 	}
 	printf("Done");
 	return 0;
