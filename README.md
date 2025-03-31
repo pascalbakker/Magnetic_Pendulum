@@ -1,6 +1,6 @@
 ### Magnetic Pendulum Chaos Theory
 
-![4 Magnets Example]("https://raw.githubusercontent.com/pascalbakker/Magnetic_Pendulum/refs/heads/master/Examples/4Magnets.png?raw=true")
+![4 magnet chaos theory](https://raw.githubusercontent.com/pascalbakker/Magnetic_Pendulum/refs/heads/master/Examples/4Magnets.png?raw=true)
 
 ### Info
 The goal of this project is to display chaos with the mangentic pendulum. 
