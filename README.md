@@ -21,7 +21,7 @@ To add magnets update the "magnets" array and the "numOfMagnets" variable.
 ### How to build
 
 ```
-mkdir build && cd $_ && cmake --build .
+mkdir build && cd $_ && cmake .. && cmake --build .
 ```
 
 ### How to execute
