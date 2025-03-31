@@ -5,7 +5,7 @@
 ### Info
 The goal of this project is to display chaos with the mangentic pendulum. 
 
-Each purple square is a magnet.
+Each purple square is a magnet. (except in the image above, where the center 0,0 is also a purple square)
 
 [A quick video explaining the magnetic pendulum](https://www.youtube.com/watch?v=Qe5Enm96MFQ&t=7s)
 
