@@ -8,7 +8,7 @@
 The goal of this project is to display chaos with the mangentic pendulum. [Youtube video explaining the problem.](https://youtu.be/oVNr5wPHuTs?si=SJc5yWk-k2eWuROM)
 
 
-Each purple square is a magnet. (except in the image above, where the center 0,0 is also a purple square)
+Each purple square is a magnet. Each color represents which magnet it ended up being attracted. 
 
 [A quick video explaining the magnetic pendulum](https://www.youtube.com/watch?v=Qe5Enm96MFQ&t=7s)
 
